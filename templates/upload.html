@@ -1,23 +1,19 @@
-qs<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register</title>
+    <title>Upload Image</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>Register</h1>
-    <form method="POST">
-        <label for="username">Username:</label>
-        <input type="text" id="username" name="username" required>
+    <h1>Upload Image</h1>
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="file" required>
         <br>
-        <label for="password">Password:</label>
-        <input type="password" id="password" name="password" required>
-        <br>
-        <button type="submit">Register</button>
+        <button type="submit">Upload</button>
     </form>
-    <p>Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
+    <p><a href="{{ url_for('logout') }}">Logout</a></p>
     {% with messages = get_flashed_messages() %}
       {% if messages %}
         <ul>

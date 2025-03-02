@@ -1,16 +1,23 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 import boto3
+import mysql.connector
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-# Initialize a session using Amazon S3
-s3 = boto3.client('s3', region_name='us-east-1')
+# Database connection
+db_config = {
+    'user': 'admin',  # Your RDS username
+    'password': 'your_rds_password',  # Your RDS password
+    'host': 'your_rds_endpoint',  # Your RDS endpoint
+    'database': 'your_database_name'  # Your database name
+}
 
-# Bucket name (replace with your actual bucket name)
-BUCKET_NAME = 'your-s3-bucket-name'
+# Initialize S3 client
+s3 = boto3.client('s3', region_name='us-east-1')
+BUCKET_NAME = 'flask-image-uploads'  # Your S3 bucket name
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -19,8 +26,14 @@ def register():
         password = request.form['password']
         hashed_password = generate_password_hash(password)
 
-        # Store user data in S3
-        s3.put_object(Bucket=BUCKET_NAME, Key=f'users/{username}.txt', Body=hashed_password)
+        # Store user data in RDS
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, hashed_password))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
         flash('Registration successful!')
         return redirect(url_for('login'))
     return render_template('register.html')
@@ -31,26 +44,34 @@ def login():
         username = request.form['username']
         password = request.form['password']
 
-        try:
-            # Retrieve user data from S3
-            response = s3.get_object(Bucket=BUCKET_NAME, Key=f'users/{username}.txt')
-            stored_password = response['Body'].read().decode('utf-8')
+        # Retrieve user data from RDS
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+        cursor.execute("SELECT password FROM users WHERE username = %s", (username,))
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
 
-            if check_password_hash(stored_password, password):
-                session['username'] = username
-                flash('Login successful!')
-                return redirect(url_for('home'))
-            else:
-                flash('Invalid password.')
-        except s3.exceptions.NoSuchKey:
-            flash('Username not found.')
+        if result and check_password_hash(result[0], password):
+            session['username'] = username
+            flash('Login successful!')
+            return redirect(url_for('upload'))
+        else:
+            flash('Invalid username or password.')
     return render_template('login.html')
 
-@app.route('/home')
-def home():
-    if 'username' in session:
-        return f'Welcome, {session["username"]}!'
-    return redirect(url_for('login'))
+@app.route('/upload', methods=['GET', 'POST'])
+def upload():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        file = request.files['file']
+        if file:
+            s3.upload_fileobj(file, BUCKET_NAME, file.filename)
+            flash('Image uploaded successfully!')
+            return redirect(url_for('upload'))
+    return render_template('upload.html')
 
 @app.route('/logout')
 def logout():
